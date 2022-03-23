@@ -37,6 +37,7 @@ BufferPoolManagerInstance::BufferPoolManagerInstance(size_t pool_size, uint32_t 
   replacer_ = new LRUReplacer(pool_size);
 
   // Initially, every page is in the free list.
+  // Page都会初始化？
   for (size_t i = 0; i < pool_size_; ++i) {
     free_list_.emplace_back(static_cast<int>(i));
   }
@@ -64,7 +65,11 @@ Page *BufferPoolManagerInstance::NewPgImp(page_id_t *page_id) {
   // 4.   Set the page ID output parameter. Return a pointer to P.
   return nullptr;
 }
-
+/** Fetch the requested page from the buffer pool. 
+ * 应该就是线程调用该页面，如果存在，那么直接pin一下，返回地址
+ * 如果不存在，找一个就去空闲列表找一个使用，如果空闲列表没了
+ * 那么就剔除一个页面，然后如果是脏页，就刷回去，然后返回对应的page
+ */
 Page *BufferPoolManagerInstance::FetchPgImp(page_id_t page_id) {
   // 1.     Search the page table for the requested page (P).
   // 1.1    If P exists, pin it and return it immediately.
@@ -73,6 +78,8 @@ Page *BufferPoolManagerInstance::FetchPgImp(page_id_t page_id) {
   // 2.     If R is dirty, write it back to the disk.
   // 3.     Delete R from the page table and insert P.
   // 4.     Update P's metadata, read in the page content from disk, and then return a pointer to P.
+  Page *p = nullptr;
+  replacer_->Pin(page_id);
   return nullptr;
 }
 
@@ -84,8 +91,47 @@ bool BufferPoolManagerInstance::DeletePgImp(page_id_t page_id) {
   // 3.   Otherwise, P can be deleted. Remove P from the page table, reset its metadata and return it to the free list.
   return false;
 }
+/**
+ *  Unpin the target page from the buffer pool. 
+ *  return false if the page pin count is <= 0 before this call, true otherwise
+ * 在上层的视角来看，就是一个线程用完这个page之后，就会触发unpin
+ * 然后在BMP里面，就会把这个pagepincount--，然后如果 == 0，就会在LRU中unpin，如果大于零则不会处理
+ * 至于is_dirty，就是上层的thread传入的，需要更新该page的is_dirty状态
+ * 还需要查看pincount，如果page的pincount是0，那么就把他的id放入lru里面
+ * （也就是说，page_里面存的是具体的page数据和id，然后page_的下标是frame_id）
+ */
+bool BufferPoolManagerInstance::UnpinPgImp(page_id_t page_id, bool is_dirty) {
+  pg_latch_.lock();
+  pt_latch_.lock();
 
-bool BufferPoolManagerInstance::UnpinPgImp(page_id_t page_id, bool is_dirty) { return false; }
+  // 不在BMP，直接返回成功
+  if (!page_table_.count(page_id)){
+    pt_latch_.unlock();
+    pg_latch_.unlock();
+    return true;
+  }
+
+  frame_id_t frame_id = page_table_[page_id];
+  if(pages_[frame_id].GetPinCount()){
+    pages_[frame_id].DecreasePinCount();
+  }
+
+  // pincount 为零则LRU执行Unpin
+  if(!pages_[frame_id].GetPinCount()){
+    replacer_->Unpin(frame_id);
+  }
+
+  // 设置脏页或者否
+  if(is_dirty){
+    pages_[frame_id].SetDirty();
+  } else {
+    pages_[frame_id].SetUnDirty();
+  }
+
+  pt_latch_.unlock();
+  pg_latch_.unlock();
+  return true;
+}
 
 page_id_t BufferPoolManagerInstance::AllocatePage() {
   const page_id_t next_page_id = next_page_id_;

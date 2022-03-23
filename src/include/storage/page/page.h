@@ -45,8 +45,16 @@ class Page {
   /** @return the pin count of this page */
   inline int GetPinCount() { return pin_count_; }
 
+  inline void IncreasePinCount() { ++pin_count_; }
+  
+  inline void DecreasePinCount() { --pin_count_; }
+
   /** @return true if the page in memory has been modified from the page on disk, false otherwise */
   inline bool IsDirty() { return is_dirty_; }
+
+  inline void SetDirty() { is_dirty_ = true; }
+  
+  inline void SetUnDirty() { is_dirty_ = false; }
 
   /** Acquire the page write latch. */
   inline void WLatch() { rwlatch_.WLock(); }
