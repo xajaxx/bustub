@@ -66,10 +66,14 @@ class BPlusTreePage {
   // member variable, attributes that both internal and leaf page share
   IndexPageType page_type_ __attribute__((__unused__));
   lsn_t lsn_ __attribute__((__unused__));
+  // 现存的数量
   int size_ __attribute__((__unused__));
+  // 可容纳的最大的KV对
   int max_size_ __attribute__((__unused__));
   page_id_t parent_page_id_ __attribute__((__unused__));
   page_id_t page_id_ __attribute__((__unused__));
+  // std::vector<BPlusTreePage *>  arr_child_ptr_;
+  // BPlusTreePage *parent_ptr;
 };
 
 }  // namespace bustub
