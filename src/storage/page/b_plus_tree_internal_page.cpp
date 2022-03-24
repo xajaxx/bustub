@@ -107,7 +107,7 @@ ValueType B_PLUS_TREE_INTERNAL_PAGE_TYPE::Lookup(const KeyType &key, const KeyCo
       low = mid;
     }
   }
-  return ;
+  return ValueAt((left + right) >> 1);
 }
 
 /*****************************************************************************
