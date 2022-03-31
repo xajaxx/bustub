@@ -30,49 +30,70 @@ LRUReplacer::LRUReplacer(size_t num_pages) {
     std::lock_guard<std::mutex> lg(m);
     head = new ListNode(-1);
     tail = new ListNode(-1);
-    size_page = 0;
+    head->next = tail;
+    tail->prev = head;
+    max_size_ = num_pages;
+    size_ = 0;
 }
 
-LRUReplacer::~LRUReplacer() = default;
+LRUReplacer::~LRUReplacer(){
+  ListNode *node = head;
+  while(node != tail){
+    ListNode *tmp = node;
+    node = node->next;
+    delete tmp;
+  }
+  delete node;
+};
 
 bool LRUReplacer::Victim(frame_id_t *frame_id) {
   std::lock_guard<std::mutex> lg(m);
-  if (size_page == 0) {
+  if (Size() == 0) {
     return false;
   }
-  auto page_ = head->next;
-  *frame_id = page_->frame_id;
-  delete (page_);
-  --size_page;
+  ListNode *node = head->next;
+  *frame_id = node->frame_id;
+  cachePage.erase(node->frame_id);
+  deleteNode(node);
+
+  // delete [] node;
+  // node = nullptr;
+  --size_;
   return true;
 }
 
 /* 该页面有线程正在读写，应该把页面从LRU移除，如果没有该页面，那么直接忽略 */
 void LRUReplacer::Pin(frame_id_t frame_id) {
     std::lock_guard<std::mutex> lg(m);
-    if (size_page == 0 || !cachePage.count(frame_id)) {
+    if (size_ == 0 || !cachePage.count(frame_id)) {
         return;
     }
-    auto page_ = cachePage[frame_id];
-    delete (page_);
-    --size_page;
+    ListNode *node = cachePage[frame_id];
+    cachePage.erase(node->frame_id);
+    deleteNode(node);
+    --size_;
 }
 /* 没有线程读写了，放入LRU等待淘汰，直接把当前id放入队尾 */
 void LRUReplacer::Unpin(frame_id_t frame_id) {
     std::lock_guard<std::mutex> lg(m);
-    if(cachePage.count(frame_id)){
+    if(cachePage.count(frame_id) || Size() == max_size_){
       return;
     }
-    auto node = new ListNode(frame_id);
-    tail->prev->next = node;
-    node->prev = tail->prev;
-    tail->prev = node;
-    node->next = tail;
-    ++size_page;
+    ListNode *node = new ListNode(frame_id);
+    cachePage[frame_id] = node;
+    AddNode(node);
+    ++size_;
 }
 
 size_t LRUReplacer::Size() {
-    return size_page;
+    return size_;
+}
+
+void LRUReplacer::AddNode(ListNode *node) {
+  tail->prev->next = node;
+  node->prev = tail->prev;
+  tail->prev = node;
+  node->next = tail;
 }
 
 void LRUReplacer::deleteNode(ListNode *node) {

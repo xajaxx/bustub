@@ -45,12 +45,18 @@ class BPlusTreeLeafPage : public BPlusTreePage {
   // After creating a new leaf page from buffer pool, must call initialize
   // method to set default values
   void Init(page_id_t page_id, page_id_t parent_id = INVALID_PAGE_ID, int max_size = LEAF_PAGE_SIZE);
+  
+  IndexPageType GetPageType();
   // helper methods
   page_id_t GetNextPageId() const;
   void SetNextPageId(page_id_t next_page_id);
+//   page_id_t GetPrevPageId() const;
+//   void SetPrevPageId(page_id_t prev_page_id);
+
   KeyType KeyAt(int index) const;
   int KeyIndex(const KeyType &key, const KeyComparator &comparator) const;
   const MappingType &GetItem(int index);
+  void InsertAt(int pos, const KeyType &key, const ValueType &value);
 
   // insert and delete methods
   int Insert(const KeyType &key, const ValueType &value, const KeyComparator &comparator);
@@ -58,6 +64,7 @@ class BPlusTreeLeafPage : public BPlusTreePage {
   int RemoveAndDeleteRecord(const KeyType &key, const KeyComparator &comparator);
 
   // Split and Merge utility methods
+  void Remove(int index);
   void MoveHalfTo(BPlusTreeLeafPage *recipient);
   void MoveAllTo(BPlusTreeLeafPage *recipient);
   void MoveFirstToEndOf(BPlusTreeLeafPage *recipient);
@@ -68,6 +75,7 @@ class BPlusTreeLeafPage : public BPlusTreePage {
   void CopyLastFrom(const MappingType &item);
   void CopyFirstFrom(const MappingType &item);
   page_id_t next_page_id_;
-  MappingType array_[0];
+//   page_id_t prev_page_id_;
+  MappingType array_[LEAF_PAGE_SIZE];
 };
 }  // namespace bustub

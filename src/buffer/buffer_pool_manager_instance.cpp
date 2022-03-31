@@ -74,6 +74,38 @@ void BufferPoolManagerInstance::FlushAllPgsImp() {
   }
 }
 
+// 从lru获取一个f_id，并且根据其是否为脏页刷回到磁盘中
+frame_id_t BufferPoolManagerInstance::GetPageFromLRU(){
+  frame_id_t f_id; 
+  if (!replacer_->Victim(&f_id)) {
+    // 此时可能是所有的page都在被线程读写，并发量达到最高，LRU没有页面等待被淘汰
+    return INVALID_PAGE_ID;
+  }
+
+  page_id_t p_id = pages_[f_id].GetPageId();
+
+  if(pages_[f_id].IsDirty()){
+    if (!FlushPgImp(p_id)){
+      // 刷入磁盘脏页失败
+      return INVALID_PAGE_ID;
+    }
+  }
+  return f_id;
+}
+
+/*
+********************************************************************************
+newpageip和FetchPgImp有什么区别？
+：newpageip是用来新建一个页面，干净的，返回给上层
+：FetchPgImp则是，上层之前使用过这个页面，
+  之前可能有一些原因比如不再使用了，放入lru或者被刷新到磁盘了，这个时候需要再拿出来
+
+********************************************************************************
+*/
+
+// 为上层提供一个借口，freelist如果有空闲的，那么直接使用freelist的页框，如果freelist没有
+// 那么lru找，lru是用来暂存的，是一些线程使用过的页面
+// 如果这两个都没有，那么说明所有page都在被线程使用（因为所有不被线程使用的page才会被放入lru）
 Page *BufferPoolManagerInstance::NewPgImp(page_id_t *page_id) {
   // 0.   Make sure you call AllocatePage!
   // 1.   If all the pages in the buffer pool are pinned, return nullptr.
@@ -83,7 +115,7 @@ Page *BufferPoolManagerInstance::NewPgImp(page_id_t *page_id) {
   std::unique_lock<std::mutex> free_ul(free_latch_);
   frame_id_t f_id;
 
-  if(free_list_.empty() && !replacer_->Size()){
+  if(free_list_.empty() && replacer_->Size() == 0){
     return nullptr;
   }
 
@@ -92,16 +124,20 @@ Page *BufferPoolManagerInstance::NewPgImp(page_id_t *page_id) {
     free_list_.pop_front();
     free_ul.unlock();
   } else {
-    if(!replacer_->Victim(&f_id)){
+    if((f_id = GetPageFromLRU()) == INVALID_PAGE_ID){
       return nullptr;
     }
   }
-  free_ul.unlock();
   std::lock_guard<std::mutex> pg_lg(pg_latch_);
+  std::lock_guard<std::mutex> pt_lg(pt_latch_);
+  page_id_t p_id = AllocatePage();
   pages_[f_id].ResetMemory();
   pages_[f_id].is_dirty_ = false;
-  pages_[f_id].pin_count_ = 0;
-  *page_id = pages_[f_id].page_id_;
+  pages_[f_id].pin_count_ = 1;
+  pages_[f_id].page_id_ = p_id;
+  page_table_.insert({p_id, f_id});
+
+  *page_id = p_id;
 
   return &pages_[f_id];
 }
@@ -122,7 +158,7 @@ Page *BufferPoolManagerInstance::FetchPgImp(page_id_t page_id) {
   std::lock_guard<std::mutex> pg_lg(pg_latch_);
   std::lock_guard<std::mutex> pt_lg(pt_latch_);
 
-  if(!page_table_.count(page_id)){
+  if(page_table_.count(page_id)){
     frame_id_t f_id = page_table_[page_id];
     replacer_->Pin(f_id);
     pages_[f_id].pin_count_++;
@@ -137,36 +173,24 @@ Page *BufferPoolManagerInstance::FetchPgImp(page_id_t page_id) {
     pages_[f_id].pin_count_++;
 
     return &pages_[f_id];
-  }
-
-  free_ul.unlock();
-  if (!replacer_->Victim(&f_id)) {
-    // 此时可能是所有的page都在被线程读写，并发量达到最高，LRU没有页面等待被淘汰
-    return nullptr;
-  }
-
-  page_id_t p_id = pages_[f_id].GetPageId();
-
-  if(pages_[f_id].IsDirty()){
-    if (!FlushPgImp(p_id)){
-      // 刷入磁盘脏页失败
+  } else {
+    if((f_id = GetPageFromLRU()) == INVALID_PAGE_ID){
       return nullptr;
     }
   }
-
+  free_ul.unlock();
   page_table_.erase(page_id);
   // 插入新的 page_id 与 frame_id 对
   page_table_.insert({page_id, f_id});
-
   disk_manager_->ReadPage(page_id, pages_[f_id].data_);
-  pages_[f_id].pin_count_--;
+  pages_[f_id].pin_count_ = 1;
   pages_[f_id].is_dirty_ = false;
   pages_[f_id].page_id_ = page_id;
 
   return &pages_[f_id];
 }
 
-//  不需要刷盘，因为delete是一个上层调用的动作？？？？
+//  不需要刷盘，因为delete是一个上层调用的动作
 bool BufferPoolManagerInstance::DeletePgImp(page_id_t page_id) {
   // 0.   Make sure you call DeallocatePage!
   // 1.   Search the page table for the requested page (P).

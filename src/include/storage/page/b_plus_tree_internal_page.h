@@ -38,13 +38,18 @@ class BPlusTreeInternalPage : public BPlusTreePage {
   // must call initialize method after "create" a new node
   void Init(page_id_t page_id, page_id_t parent_id = INVALID_PAGE_ID, int max_size = INTERNAL_PAGE_SIZE);
 
+  IndexPageType GetPageType();
+
   KeyType KeyAt(int index) const;
   void SetKeyAt(int index, const KeyType &key);
+  void SetValueAt(int index, const ValueType &value);
   int ValueIndex(const ValueType &value) const;
   ValueType ValueAt(int index) const;
 
+  int IndexLookup(const KeyType &key, const KeyComparator &comparator) const;
   ValueType Lookup(const KeyType &key, const KeyComparator &comparator) const;
   void PopulateNewRoot(const ValueType &old_value, const KeyType &new_key, const ValueType &new_value);
+  int InsertAt(int idx, const KeyType &new_key, const ValueType &new_value);
   int InsertNodeAfter(const ValueType &old_value, const KeyType &new_key, const ValueType &new_value);
   void Remove(int index);
   ValueType RemoveAndReturnOnlyChild();
@@ -58,10 +63,17 @@ class BPlusTreeInternalPage : public BPlusTreePage {
                          BufferPoolManager *buffer_pool_manager);
 
  private:
+  void SetChildParent(ValueType p_id, BufferPoolManager *buffer_pool_manager);
   void CopyNFrom(MappingType *items, int size, BufferPoolManager *buffer_pool_manager);
   void CopyLastFrom(const MappingType &pair, BufferPoolManager *buffer_pool_manager);
   void CopyFirstFrom(const MappingType &pair, BufferPoolManager *buffer_pool_manager);
-  // kv键值对数组
-  MappingType array_[0];
+
+  /**
+   * kv键值对数组
+   * key就是key，value则是page_id，记录孩子节点的id
+   * key0 是无效的， 对于key[1], val[1]中的所有值，都是大于等于key[1]的
+   * 所以，对于任意的节点，key[i] <= val[i] < key[i + 1]
+   */
+  MappingType array_[INTERNAL_PAGE_SIZE];
 };
 }  // namespace bustub

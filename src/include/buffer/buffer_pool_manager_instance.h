@@ -58,6 +58,8 @@ class BufferPoolManagerInstance : public BufferPoolManager {
   /** @return pointer to all the pages in the buffer pool */
   Page *GetPages() { return pages_; }
 
+  frame_id_t GetPageFromLRU();
+
  protected:
   /**
    * Fetch the requested page from the buffer pool.

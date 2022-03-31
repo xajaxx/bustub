@@ -59,6 +59,8 @@ class LRUReplacer : public Replacer {
   size_t Size() override;
 
  protected:
+  void AddNode(ListNode *node);
+
   void deleteNode(ListNode *node);
   
  private:
@@ -67,7 +69,8 @@ class LRUReplacer : public Replacer {
   std::unordered_map<frame_id_t, ListNode *> cachePage;
   ListNode *head = nullptr;
   ListNode *tail = nullptr;
-  size_t size_page;
+  size_t max_size_;
+  size_t size_;
 };
 
 }  // namespace bustub
