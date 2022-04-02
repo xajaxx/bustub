@@ -1,151 +1,98 @@
-<img src="logo/bustub-whiteborder.svg" alt="BusTub Logo" height="200">
+## 项目二之b+tree
+### 分析
+#### b_plus_tree
 
------------------
+这个是主要提供接口的类，特点如下：
 
-[![Build Status](https://travis-ci.org/cmu-db/bustub.svg?branch=master)](https://travis-ci.org/cmu-db/bustub)
-[![CircleCI](https://circleci.com/gh/cmu-db/bustub/tree/master.svg?style=svg)](https://circleci.com/gh/cmu-db/bustub/tree/master)
+1、只支持单一key
 
-BusTub is a relational database management system built at [Carnegie Mellon University](https://db.cs.cmu.edu) for the [Introduction to Database Systems](https://15445.courses.cs.cmu.edu) (15-445/645) course. This system was developed for educational purposes and should not be used in production environments.
+2、支持insert & remove
 
-**WARNING: IF YOU ARE A STUDENT IN THE CLASS, DO NOT DIRECTLY FORK THIS REPO. DO NOT PUSH PROJECT SOLUTIONS PUBLICLY. THIS IS AN ACADEMIC INTEGRITY VIOLATION AND CAN LEAD TO GETTING YOUR DEGREE REVOKED, EVEN AFTER YOU GRADUATE.**
+3、动态的增长或者减小
 
-## Cloning this Repository
+4、实现提供 range 扫描的 index 的迭代器
 
-The following instructions are adapted from the Github documentation on [duplicating a repository](https://docs.github.com/en/github/creating-cloning-and-archiving-repositories/creating-a-repository-on-github/duplicating-a-repository). The procedure below walks you through creating a private BusTub repository that you can use for development.
+#### 节点类型
 
-1. Go [here](https://github.com/new) to create a new repository under your account. Pick a name (e.g. `bustub-private`) and select **Private** for the repository visibility level.
-2. On your development machine, create a bare clone of the public BusTub repository:
-   ```
-   $ git clone --bare https://github.com/cmu-db/bustub.git bustub-public
-   ```
-3. Next, [mirror](https://git-scm.com/docs/git-push#Documentation/git-push.txt---mirror) the public BusTub repository to your own private BusTub repository. Suppose your GitHub name is `student` and your repository name is `bustub-private`. The procedure for mirroring the repository is then:
-   ```
-   $ cd bustub-public
-   
-   # If you pull / push over HTTPS
-   $ git push --mirror https://github.com/student/bustub-private.git
+首先节点分为两种页面：叶子节点（leaf page）、非叶子节点（internal page）
 
-   # If you pull / push over SSH
-   $ git push --mirror git@github.com:student/bustub-private.git
-   ```
-   This copies everything in the public BusTub repository to your own private repository. You can now delete your local clone of the public repository:
-   ```
-   $ cd ..
-   $ rm -rf bustub-public
-   ```
-4. Clone your private repository to your development machine:
-   ```
-   # If you pull / push over HTTPS
-   $ git clone https://github.com/student/bustub-private.git
+#### 非叶子节点
 
-   # If you pull / push over SSH
-   $ git clone git@github.com:student/bustub-private.git
-   ```
-5. Add the public BusTub repository as a second remote. This allows you to retrieve changes from the CMU-DB repository and merge them with your solution throughout the semester:
-   ```
-   $ git remote add public https://github.com/cmu-db/bustub.git
-   ```
-   You can verify that the remote was added with the following command:
-   ```
-   $ git remote -v
-   origin	https://github.com/student/bustub-private.git (fetch)
-   origin	https://github.com/student/bustub-private.git (push)
-   public	https://github.com/cmu-db/bustub.git (fetch)
-   public	https://github.com/cmu-db/bustub.git (push)
-   ```
-6. You can now pull in changes from the public BusTub repository as needed with:
-   ```
-   $ git pull public master
-   ```
+header + kv对
 
-We suggest working on your projects in separate branches. If you do not understand how Git branches work, [learn how](https://git-scm.com/book/en/v2/Git-Branching-Basic-Branching-and-Merging). If you fail to do this, you might lose all your work at some point in the semester, and nobody will be able to help you.
+其中，header大小为 —— 24byte ，包含：
 
-## Build
+`PageType(4) | LSN (4) | CurrentSize (4) | MaxSize (4) | ParentPageId (4) | PageId (4)` 
 
-### Linux / Mac
+其中LSN是Log sequence number (在项目四中会用到)
 
-To ensure that you have the proper packages on your machine, run the following script to automatically install them:
+k0是不存储数据的，对于v，存储的是孩子节点的page-id
 
-```
-$ sudo build_support/packages.sh
+所以，总体来说，就是*K(i) <= K < K(i+1)，* 其中K是V[i]
+
+这么看，v[0] 的所有数据都是小于K[1]的，v1又大于等于k1，画出来就是这样
+
+```cpp
+ (k[0]为空)      5(k[1])             10(k[2]) 
+        v[0]/             v[1]|               v[2]\
+       1,2,3,4            5,6,9               10,11,15
 ```
 
-Then run the following commands to build the system:
+所以，对于internal类型的page，可以存储的kv对数量就是
 
-```
-$ mkdir build
-$ cd build
-$ cmake ..
-$ make
-```
+`(PAGE_SIZE - INTERNAL_PAGE_HEADER_SIZE) / (sizeof(MappingType))`
 
-If you want to compile the system in debug mode, pass in the following flag to cmake:
-Debug mode:
+#### 叶子节点
 
-```
-$ cmake -DCMAKE_BUILD_TYPE=Debug ..
-$ make
-```
-This enables [AddressSanitizer](https://github.com/google/sanitizers), which can generate false positives for overflow on STL containers. If you encounter this, define the environment variable `ASAN_OPTIONS=detect_container_overflow=0`.
+叶子节点也是由两部分组成，header和kv对
 
-### Windows
+其中，header大小为28byte，分为：
 
-If you are using Windows 10, you can use the Windows Subsystem for Linux (WSL) to develop, build, and test Bustub. All you need is to [Install WSL](https://docs.microsoft.com/en-us/windows/wsl/install-win10). You can just choose "Ubuntu" (no specific version) in Microsoft Store. Then, enter WSL and follow the above instructions.
+`PageType(4) | LSN (4) | CurrentSize (4) | MaxSize (4) | ParentPageId (4) | PageId (4) | NextPageId (4)`
 
-If you are using CLion, it also [works with WSL](https://blog.jetbrains.com/clion/2018/01/clion-and-linux-toolchain-on-windows-are-now-friends).
+k是k，v则是RID，RID也在include/common/rid.h中实现了，RID是page-id + slot-id
 
-## Testing
+RID是一个64位的字节数据
 
-```
-$ cd build
-$ make check-tests
-```
+前32位是page_id，后32位是slot_id
 
-## Build environment
+所以对于叶子节点，可以存储的kv数量就是
 
-If you have trouble getting cmake or make to run, an easy solution is to create a virtual container to build in. There are two options available:
+`(PAGE_SIZE - LEAF_PAGE_HEADER_SIZE) / sizeof(MappingType)`
 
-### Vagrant
 
-First, make sure you have Vagrant and Virtualbox installed
-```
-$ sudo apt update
-$ sudo apt install vagrant virtualbox
-```
+### 删除
+函数调用关系如下：
 
-From the repository directory, run this command to create and start a Vagrant box:
+![b+树的删除](./assets/b%2Btree_delete.png)
+（上图还有一个CoalesceOrRedistribute内的判断根节点没画出，但总体不影响）
 
-```
-$ vagrant up
-```
+对于删除，有三种重要的函数，如下：
 
-This will start a Vagrant box running Ubuntu 20.02 in the background with all the packages needed. To access it, type
+#### 1、CoalesceOrRedistribute
 
-```
-$ vagrant ssh
-```
+`CoalesceOrRedistribute`函数是，删除之后，如果当前节点不满足最小值限制，那么就调用这个函数，
 
-to open a shell within the box. You can find Bustub's code mounted at `/bustub` and run the commands mentioned above like normal.
+如果当前是根节点，那么就直接调ajustroot即可
 
-### Docker
+如果当前不是根节点，那么就检查左右节点有没有可用的，如果有可用的，那么就直接调用redistrubute，重新分配，如果没有可用的，那么就调用coalsece进行合并
 
-First, make sure that you have docker installed:
-```
-$ sudo apt update
-$ sudo apt install docker
-```
+#### 2、Coalesce
 
-From the repository directory, run these commands to create a Docker image and container:
+`Coalesce`是进行合并的
 
-```
-$ docker build . -t bustub
-$ docker create -t -i --name bustub -v $(pwd):/bustub bustub bash
-```
+如果当前节点是叶子节点，那么就与左/右节点进行合并，然后删除父节点对应的middle kv
 
-This will create a Docker image and container. To run it, type:
+如果当前节点是internal节点，那么也是进行合并，但是要把右侧节点对应的kv值也进行合并，作为middle key，并且把父节点的middle kv 删除
 
-```
-$ docker start -a -i bustub
-```
+最后因为父节点删除了一个kv，所以还是需要检查父节点的kv值是否小于minsize，并且决定是否重新调用`CoalesceOrRedistribute`
 
-to open a shell within the box. You can find Bustub's code mounted at `/bustub` and run the commands mentioned above like normal.
+#### 3、Redistribute
+
+`Redistribute`是进行重新分配的，不涉及删除任何kv与page
+
+如果当前节点是叶子节点，那么就把左侧/右侧的最后一个/第一个kv移动过来，同时也要更新父节点的middle key
+
+如果当前节点是内部节点，那么就把父节点对应的kv移动到自己首部/尾部，然后把左/右的节点的首/尾移动到父节点的对应的位置
+
+删除这部分测试很简单，极其不完备，我也有一部分不太理解，比如在insert的叶子节点为2，内部节点为3的情况下，删除1之后，父节点就只剩下一个指针了，此时父节点是否应该找兄弟节点借kv？

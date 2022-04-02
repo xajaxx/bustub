@@ -10,6 +10,7 @@
 //===----------------------------------------------------------------------===//
 
 #include <sstream>
+#include <iostream>
 
 #include "common/exception.h"
 #include "common/rid.h"
@@ -234,8 +235,8 @@ int B_PLUS_TREE_LEAF_PAGE_TYPE::RemoveAndDeleteRecord(const KeyType &key, const 
  */
 INDEX_TEMPLATE_ARGUMENTS
 void B_PLUS_TREE_LEAF_PAGE_TYPE::MoveAllTo(BPlusTreeLeafPage *recipient) {
-  if(recipient->GetSize() + GetSize() > recipient->GetMaxSize()){
-    std::cout << "should not merge, beacuse the size after merge is: " << recipient->GetSize() + GetSize() << std::endl;
+  if((recipient->GetSize() + GetSize()) > recipient->GetMaxSize()){
+    std::cout << "should not merge, beacuse the size after merge is: " << (recipient->GetSize() + GetSize()) << std::endl;
     return;
   }
 //   // 当前节点是接收节点的右节点，应该插入到recipient的末尾
@@ -264,7 +265,6 @@ void B_PLUS_TREE_LEAF_PAGE_TYPE::MoveAllTo(BPlusTreeLeafPage *recipient) {
   for(int i = 0; i < size; ++i){
     recipient->CopyLastFrom(array_[i]);
   }
-  recipient->IncreaseSize(size);
   // 链表不可以断掉
   recipient->SetNextPageId(GetNextPageId());
   SetSize(0);
