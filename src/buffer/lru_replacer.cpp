@@ -55,9 +55,6 @@ bool LRUReplacer::Victim(frame_id_t *frame_id) {
   *frame_id = node->frame_id;
   cachePage.erase(node->frame_id);
   deleteNode(node);
-
-  // delete [] node;
-  // node = nullptr;
   --size_;
   return true;
 }
@@ -74,11 +71,21 @@ void LRUReplacer::Pin(frame_id_t frame_id) {
     --size_;
 }
 /* 没有线程读写了，放入LRU等待淘汰，直接把当前id放入队尾 */
+/* 如果内部有，那么就移动到尾部 */
 void LRUReplacer::Unpin(frame_id_t frame_id) {
     std::lock_guard<std::mutex> lg(m);
-    if(cachePage.count(frame_id) || Size() == max_size_){
+    if(cachePage.count(frame_id)){
+      moveToEnd(frame_id);
       return;
     }
+    if(Size() >= max_size_){
+        ListNode *delete_node = head->next;
+        frame_id_t delete_id = delete_node->frame_id;
+        cachePage.erase(delete_id);
+        deleteNode(delete_node);
+        --size_;
+    }
+    
     ListNode *node = new ListNode(frame_id);
     cachePage[frame_id] = node;
     AddNode(node);
@@ -100,6 +107,16 @@ void LRUReplacer::deleteNode(ListNode *node) {
     node->next->prev = node->prev;
     node->prev->next = node->next;
     delete node;
+}
+
+void LRUReplacer::moveToEnd(frame_id_t frame_id){
+    ListNode *node = cachePage[frame_id];
+    node->prev->next = node->next;
+    node->next->prev = node->prev;
+    node->next = tail;
+    node->prev = tail->prev;
+    node->prev->next = node;
+    tail->prev = node;
 }
 
 }  // namespace bustub

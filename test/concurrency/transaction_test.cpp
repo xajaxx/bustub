@@ -1,14 +1,6 @@
-//===----------------------------------------------------------------------===//
-//
-//                         BusTub
-//
-// transaction_test.cpp
-//
-// Identification: test/concurrency/transaction_test.cpp
-//
-// Copyright (c) 2015-2021, Carnegie Mellon University Database Group
-//
-//===----------------------------------------------------------------------===//
+/**
+ * transaction_test.cpp
+ */
 
 #include <atomic>
 #include <cstdio>
@@ -18,7 +10,7 @@
 #include <utility>
 #include <vector>
 
-#include "buffer/buffer_pool_manager_instance.h"
+#include "buffer/buffer_pool_manager.h"
 #include "catalog/table_generator.h"
 #include "concurrency/transaction.h"
 #include "concurrency/transaction_manager.h"
@@ -33,7 +25,7 @@
 #include "execution/plans/nested_index_join_plan.h"
 #include "execution/plans/seq_scan_plan.h"
 #include "gtest/gtest.h"
-#include "test_util.h"  // NOLINT
+#include "storage/b_plus_tree_test_util.h"  // NOLINT
 #include "type/value_factory.h"
 
 #define TEST_TIMEOUT_BEGIN                           \
@@ -55,7 +47,7 @@ class TransactionTest : public ::testing::Test {
     ::testing::Test::SetUp();
     // For each test, we create a new DiskManager, BufferPoolManager, TransactionManager, and Catalog.
     disk_manager_ = std::make_unique<DiskManager>("executor_test.db");
-    bpm_ = std::make_unique<BufferPoolManagerInstance>(2560, disk_manager_.get());
+    bpm_ = std::make_unique<BufferPoolManager>(2560, disk_manager_.get());
     page_id_t page_id;
     bpm_->NewPage(&page_id);
     lock_manager_ = std::make_unique<LockManager>();
@@ -162,7 +154,7 @@ void CheckTxnLockSize(Transaction *txn, size_t shared_size, size_t exclusive_siz
 }
 
 // NOLINTNEXTLINE
-TEST_F(TransactionTest, DISABLED_SimpleInsertRollbackTest) {
+TEST_F(TransactionTest, SimpleInsertRollbackTest) {
   // txn1: INSERT INTO empty_table2 VALUES (200, 20), (201, 21), (202, 22)
   // txn1: abort
   // txn2: SELECT * FROM empty_table2;
@@ -185,9 +177,9 @@ TEST_F(TransactionTest, DISABLED_SimpleInsertRollbackTest) {
   auto txn2 = GetTxnManager()->Begin();
   auto exec_ctx2 = std::make_unique<ExecutorContext>(txn2, GetCatalog(), GetBPM(), GetTxnManager(), GetLockManager());
   auto &schema = table_info->schema_;
-  auto col_a = MakeColumnValueExpression(schema, 0, "colA");
-  auto col_b = MakeColumnValueExpression(schema, 0, "colB");
-  auto out_schema = MakeOutputSchema({{"colA", col_a}, {"colB", col_b}});
+  auto colA = MakeColumnValueExpression(schema, 0, "colA");
+  auto colB = MakeColumnValueExpression(schema, 0, "colB");
+  auto out_schema = MakeOutputSchema({{"colA", colA}, {"colB", colB}});
   SeqScanPlanNode scan_plan{out_schema, nullptr, table_info->oid_};
 
   std::vector<Tuple> result_set;
@@ -202,7 +194,7 @@ TEST_F(TransactionTest, DISABLED_SimpleInsertRollbackTest) {
 }
 
 // NOLINTNEXTLINE
-TEST_F(TransactionTest, DISABLED_DirtyReadsTest) {
+TEST_F(TransactionTest, DirtyReadsTest) {
   // txn1: INSERT INTO empty_table2 VALUES (200, 20), (201, 21), (202, 22)
   // txn2: SELECT * FROM empty_table2;
   // txn1: abort
@@ -217,15 +209,20 @@ TEST_F(TransactionTest, DISABLED_DirtyReadsTest) {
   auto table_info = exec_ctx1->GetCatalog()->GetTable("empty_table2");
   InsertPlanNode insert_plan{std::move(raw_vals), table_info->oid_};
 
+  Schema *key_schema = ParseCreateStatement("a bigint");
+  GenericComparator<8> comparator(key_schema);
+  //  auto index_info = exec_ctx1->GetCatalog()->CreateIndex<GenericKey<8>, RID, GenericComparator<8>>(
+  //      txn1, "index1", "empty_table2", table_info->schema_, *key_schema, {0}, 8);
+
   GetExecutionEngine()->Execute(&insert_plan, nullptr, txn1, exec_ctx1.get());
 
   // Iterate through table to read the tuples.
   auto txn2 = GetTxnManager()->Begin(nullptr, IsolationLevel::READ_UNCOMMITTED);
   auto exec_ctx2 = std::make_unique<ExecutorContext>(txn2, GetCatalog(), GetBPM(), GetTxnManager(), GetLockManager());
   auto &schema = table_info->schema_;
-  auto col_a = MakeColumnValueExpression(schema, 0, "colA");
-  auto col_b = MakeColumnValueExpression(schema, 0, "colB");
-  auto out_schema = MakeOutputSchema({{"colA", col_a}, {"colB", col_b}});
+  auto colA = MakeColumnValueExpression(schema, 0, "colA");
+  auto colB = MakeColumnValueExpression(schema, 0, "colB");
+  auto out_schema = MakeOutputSchema({{"colA", colA}, {"colB", colB}});
   SeqScanPlanNode scan_plan{out_schema, nullptr, table_info->oid_};
 
   std::vector<Tuple> result_set;
@@ -251,6 +248,7 @@ TEST_F(TransactionTest, DISABLED_DirtyReadsTest) {
 
   GetTxnManager()->Commit(txn2);
   delete txn2;
+  delete key_schema;
 }
 
 }  // namespace bustub

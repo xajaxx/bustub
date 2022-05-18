@@ -68,6 +68,7 @@ Tuple::Tuple(const Tuple &other) : allocated_(other.allocated_), rid_(other.rid_
 }
 
 Tuple &Tuple::operator=(const Tuple &other) {
+  // 将其他的tuple数据赋给当前的对象
   if (allocated_) {
     delete[] data_;
   }

@@ -68,6 +68,9 @@ m4/lt~obsolete.m4
 #==============================================================================#
 #m4/
 build/
+test/
+oldtest/
+*_test.cpp
 #*.m4
 *.o
 *.lo
@@ -246,6 +249,12 @@ cmake_build
 .cmake_build
 cmake-build-debug
 cmake-build-release
+
+test
+*_test.cpp
+
+oldtest
+*_test.cpp
 
 # Generated documentation
 apidoc/doc

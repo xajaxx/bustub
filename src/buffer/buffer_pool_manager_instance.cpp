@@ -50,6 +50,7 @@ BufferPoolManagerInstance::~BufferPoolManagerInstance() {
 
 bool BufferPoolManagerInstance::FlushPgImp(page_id_t page_id) {
   // Make sure you call DiskManager::WritePage!
+//   std::lock_guard<std::mutex> lg(pt_latch_);
   if(!page_table_.count(page_id)){
     return false;
   }
@@ -81,7 +82,8 @@ frame_id_t BufferPoolManagerInstance::GetPageFromLRU(){
     // 此时可能是所有的page都在被线程读写，并发量达到最高，LRU没有页面等待被淘汰
     return INVALID_PAGE_ID;
   }
-
+  
+//   std::lock_guard<std::mutex> pg_lg(pg_latch_);
   page_id_t p_id = pages_[f_id].GetPageId();
 
   if(pages_[f_id].IsDirty()){
@@ -90,6 +92,8 @@ frame_id_t BufferPoolManagerInstance::GetPageFromLRU(){
       return INVALID_PAGE_ID;
     }
   }
+//   std::lock_guard<std::mutex> pt_lg(pt_latch_);
+  page_table_.erase(p_id);
   return f_id;
 }
 
@@ -119,17 +123,19 @@ Page *BufferPoolManagerInstance::NewPgImp(page_id_t *page_id) {
     return nullptr;
   }
 
+  std::lock_guard<std::mutex> pg_lg(pg_latch_);
+  std::lock_guard<std::mutex> pt_lg(pt_latch_);
+
   if(!free_list_.empty()){
     f_id = free_list_.front();
     free_list_.pop_front();
     free_ul.unlock();
   } else {
     if((f_id = GetPageFromLRU()) == INVALID_PAGE_ID){
+      *page_id = INVALID_PAGE_ID;
       return nullptr;
     }
   }
-  std::lock_guard<std::mutex> pg_lg(pg_latch_);
-  std::lock_guard<std::mutex> pt_lg(pt_latch_);
   page_id_t p_id = AllocatePage();
   pages_[f_id].ResetMemory();
   pages_[f_id].is_dirty_ = false;
@@ -210,7 +216,7 @@ bool BufferPoolManagerInstance::DeletePgImp(page_id_t page_id) {
     return false;
   }
 
-  // disk_manager_->DeallocatePage(page_id);
+//   disk_manager_->DeallocatePage(page_id);
   pages_[f_id].ResetMemory();
   pages_[f_id].is_dirty_ = false;
   pages_[f_id].page_id_ = INVALID_PAGE_ID;
@@ -251,7 +257,7 @@ bool BufferPoolManagerInstance::UnpinPgImp(page_id_t page_id, bool is_dirty) {
   }
 
   // 设置脏页或者否
-  pages_[frame_id].is_dirty_ = is_dirty;
+  pages_[frame_id].is_dirty_ |= is_dirty;
 
   return true;
 }

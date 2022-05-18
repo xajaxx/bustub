@@ -17,6 +17,7 @@
 #include <unordered_map>
 #include <utility>
 #include <vector>
+#include <functional>
 
 #include "buffer/buffer_pool_manager.h"
 #include "catalog/schema.h"
@@ -175,6 +176,9 @@ class Catalog {
 
     return (meta->second).get();
   }
+
+// template<KeyType, ValueType>
+
 
   /**
    * Create a new index, populate existing data of the table and return its metadata.

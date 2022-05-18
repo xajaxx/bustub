@@ -264,8 +264,10 @@ class Transaction {
   lsn_t prev_lsn_;
 
   /** Concurrent index: the pages that were latched during index operation. */
+  // 一个page组成的双端队列，在index操作过程中加锁的
   std::shared_ptr<std::deque<Page *>> page_set_;
   /** Concurrent index: the page IDs that were deleted during index operation.*/
+  // set组成的page_id，在index操作过程中
   std::shared_ptr<std::unordered_set<page_id_t>> deleted_page_set_;
 
   /** LockManager: the set of shared-locked tuples held by this transaction. */
